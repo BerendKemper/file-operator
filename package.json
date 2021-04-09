@@ -1,0 +1,21 @@
+{
+	"name": "file-operator",
+	"version": "1.0.0",
+	"description": "Configure a file operator ",
+	"main": "index.js",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/BerendKemper/fileObjectifier.git"
+	},
+	"keywords": [],
+	"author": {
+		"name": "Berend Kemper",
+		"email": "berend_kemper@hotmail.com",
+		"npmjs": "https://www.npmjs.com/~burndkemper"
+	},
+	"license": "ISC",
+	"bugs": {
+		"url": "https://github.com/BerendKemper/fileObjectifier/issues"
+	},
+	"homepage": "https://github.com/BerendKemper/fileObjectifier#readme"
+}
