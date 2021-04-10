@@ -114,14 +114,10 @@ class FileOperator {
 	get data() {
 		return this.#data;
 	};
-	set data(object) {
-		if (object instanceof Array === true)
-			throw new TypeError("object cannot be an array.");
-		if (object === null)
-			throw new TypeError("object cannot be null.");
-		if (typeof object !== "object")
-			throw new TypeError(`object cannot be a ${typeof object}.`);
-		this.#data = object;
+	set data(data) {
+		if (typeof data !== "object" || data === null || Array.isArray(data))
+			throw new TypeError("data must be an object");
+		this.#data = data;
 	};
 	/**
 	 * Asynchronously saves and disconnects all existing FileOperator.
