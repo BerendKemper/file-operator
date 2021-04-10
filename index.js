@@ -11,22 +11,22 @@ class CachedFileOp {
 		return this.fileOperator;
 	};
 	write() {
-		this.fileOperator.write();
+		this.fileOperator.$write();
 		return this;
 	};
-	destroy(message, callback) {
+	destroy(log, callback) {
 		this.queue.push(() => {
 			this.queue.clear();
-			console.log(message);
+			log("saved " + this.filepath);
 			callback();
 		});
 	};
 };
 let cache = {};
+// const overwrite =
 class FileOperator {
 	#hasRead = false;
 	#filepath;
-	#data;
 	#queue;
 	/**
 	 * Module for asynchronous reading and writing to a small configuration file.
@@ -34,9 +34,8 @@ class FileOperator {
 	 */
 	constructor(filepath) {
 		if (!cache[filepath]) {
-			this.#data = {};
-			this.#filepath = filepath;
 			cache[filepath] = new CachedFileOp(this);
+			this.#filepath = cache[filepath].filepath = filepath;
 			this.#queue = cache[filepath].queue = new QueueCallback();
 		}
 		else
@@ -44,19 +43,25 @@ class FileOperator {
 	};
 	/**
 	 * Once read the content is parsed and stored in data.
+	 * @param {*} overwrite 
 	 */
-	read() {
+	$read(overwrite) {
 		this.#queue.push(callback => {
 			if (this.#hasRead === true)
 				return callback();
 			fs.readFile(this.#filepath, (error, data) => {
-				const _data = this.#data;
+				if (error)
+					return callback(this.#hasRead = true);
 				data = data.toString();
 				if (data.length > 2) {
-					const source = this.parse(data);
-					for (const prop in source)
-						if (!_data[prop])
-							_data[prop] = source[prop];
+					const source = this.$parse(data);
+					if (overwrite) {
+						for (const prop in source)
+							this[prop] = source[prop];
+					}
+					else
+						for (const prop in source)
+							this[prop] = this[prop] || source[prop];
 				}
 				this.#hasRead = true;
 				callback();
@@ -65,17 +70,23 @@ class FileOperator {
 		return this;
 	};
 	/**
-	 * Stringifies the data and overwrites the file with the new string.
+	 * Stringifies the data and overwrites the file with the new string. If wait is true,
+	 * data is not stringifying immediately but when it's write's turn in the queue.
+	 * @param {Boolean} wait 
 	 */
-	write() {
-		const buffer = Buffer.from(this.stringify(this.#data));
-		this.#queue.push(callback => fs.writeFile(this.#filepath, buffer, callback));
+	$write(wait) {
+		let buffer;
+		if (wait !== true)
+			buffer = Buffer.from(this.$stringify(this));
+		this.#queue.push(callback => {
+			fs.writeFile(this.#filepath, buffer || Buffer.from(this.$stringify(this)), callback);
+		});
 		return this;
 	};
 	/**
 	 * If closed returns true. When false something else is using it.
 	 */
-	close() {
+	$close() {
 		this.#queue.push(callback => {
 			if (--cache[this.#filepath].connections === 0)
 				return this.#queue.clear(delete (cache[this.#filepath]));
@@ -88,8 +99,8 @@ class FileOperator {
 	 * when all method calls prior to this callback have finished.
 	 * @param {*} callback 
 	 */
-	onReady(callback) {
-		this.#queue.push(_callback => _callback(callback()));
+	$onReady(callback) {
+		this.#queue.push(_callback => _callback(callback(this)));
 		return this;
 	};
 	/**
@@ -97,7 +108,7 @@ class FileOperator {
 	 * @param {Srting} data 
 	 * @returns parsed object
 	 */
-	parse(data) {
+	$parse(data) {
 		return JSON.parse(data);
 	};
 	/**
@@ -105,28 +116,21 @@ class FileOperator {
 	 * @param {Object} data 
 	 * @returns stringified content of the data property
 	 */
-	stringify(data) {
+	$stringify(data) {
 		return JSON.stringify(data);
-	};
-	get filepath() {
-		return this.#filepath;
-	};
-	get data() {
-		return this.#data;
-	};
-	set data(data) {
-		if (typeof data !== "object" || data === null || Array.isArray(data))
-			throw new TypeError("data must be an object");
-		this.#data = data;
 	};
 	/**
 	 * Asynchronously saves and disconnects all existing FileOperator.
 	 * @param {Object} options 
-	 * @param {String} options.message 
+	 * @param {Function} options.log 
 	 * @param {Function} options.callback 
 	 */
 	static saveAndExitAll(options = {}) {
-		const { message = "Saved:", callback: finish = () => console.log("closed all fileOperators") } = options;
+		const { log = console.log, callback: finish = () => console.log("closed all fileOperators") } = options;
+		if (typeof log !== "function")
+			throw new TypeError("logMessage is not a function");
+		if (typeof finish !== "function")
+			throw new TypeError("finish is not a function");
 		const awaitCounter = () => {
 			if (--counter === 0) {
 				cache = {};
@@ -135,7 +139,13 @@ class FileOperator {
 		};
 		let counter = 0;
 		for (const filepath in cache)
-			cache[filepath].write(counter++).destroy(message + " " + filepath, awaitCounter);
+			cache[filepath].write(counter++).destroy(log, awaitCounter);
+	};
+	static get list() {
+		const list = [];
+		for (const filepath in cache)
+			list.push(cache[filepath].fileOperator);
+		return list;
 	};
 };
 module.exports = FileOperator;
