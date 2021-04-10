@@ -88,7 +88,7 @@ class FileOperator {
 	 * when all method calls prior to this callback have finished.
 	 * @param {*} callback 
 	 */
-	onReady(callback, msg) {
+	onReady(callback) {
 		this.#queue.push(_callback => _callback(callback()));
 		return this;
 	};
