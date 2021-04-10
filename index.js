@@ -1,25 +1,46 @@
 "use strict";
 const fs = require("fs");
 const QueueCallback = require("ca11back-queue");
-let fileOperators = {};
-const accessKey = Symbol("File Operator Access Key");
-class SmallDataFile {
-	#connections = 1;
+class CachedFileOp {
+	connections = 1;
+	constructor(fileOperator) {
+		this.fileOperator = fileOperator;
+	};
+	connect() {
+		this.connections++;
+		return this.fileOperator;
+	};
+	write() {
+		this.fileOperator.write();
+		return this;
+	};
+	destroy(message, callback) {
+		this.queue.push(() => {
+			this.queue.clear();
+			console.log(message);
+			callback();
+		});
+	};
+};
+let cache = {};
+class FileOperator {
 	#hasRead = false;
 	#filepath;
-	#data = {};
-	#queue = new QueueCallback();
+	#data;
+	#queue;
 	/**
 	 * Module for asynchronous reading and writing to a small configuration file.
 	 * @param {String} filepath 
 	 */
 	constructor(filepath) {
-		if (!fileOperators[filepath]) {
-			fileOperators[filepath] = this;
+		if (!cache[filepath]) {
+			this.#data = {};
 			this.#filepath = filepath;
+			cache[filepath] = new CachedFileOp(this);
+			this.#queue = cache[filepath].queue = new QueueCallback();
 		}
 		else
-			return fileOperators[filepath].connect(accessKey);
+			return cache[filepath].connect();
 	};
 	/**
 	 * Once read the content is parsed and stored in data.
@@ -56,8 +77,8 @@ class SmallDataFile {
 	 */
 	close() {
 		this.#queue.push(callback => {
-			if (--this.#connections === 0)
-				delete (fileOperators[this.#filepath]);
+			if (--cache[this.#filepath].connections === 0)
+				return this.#queue.clear(delete (cache[this.#filepath]));
 			callback();
 		});
 		return this;
@@ -67,7 +88,7 @@ class SmallDataFile {
 	 * when all method calls prior to this callback have finished.
 	 * @param {*} callback 
 	 */
-	onReady(callback) {
+	onReady(callback, msg) {
 		this.#queue.push(_callback => _callback(callback()));
 		return this;
 	};
@@ -86,29 +107,6 @@ class SmallDataFile {
 	 */
 	stringify(data) {
 		return JSON.stringify(data);
-	};
-	/**
-	 * @param {Symbol} key
-	 */
-	connect(key) {
-		if (key !== accessKey)
-			throw new Error("This method is not for developers to use.");
-		this.#connections++;
-		return this;
-	};
-	/**
-	 * You shall not pass. muhahaha
-	 * @param {Symbol} key
-	 */
-	disconnect(key, message, callback) {
-		if (key !== accessKey)
-			throw new Error("This method is not for developers to use.");
-		this.#queue.push(() => {
-			this.#queue.clear();
-			this.#data = {};
-			console.log(message, this.#filepath);
-			callback();
-		});
 	};
 	get filepath() {
 		return this.#filepath;
@@ -132,17 +130,16 @@ class SmallDataFile {
 	 * @param {Function} options.callback 
 	 */
 	static saveAndExitAll(options = {}) {
-		const { message = "Saved and disconnected:", callback: finish = () => console.log("closed all fileOperators") } = options;
-		let callback = () => {
-			fileOperators = {};
-			finish();
+		const { message = "Saved:", callback: finish = () => console.log("closed all fileOperators") } = options;
+		const awaitCounter = () => {
+			if (--counter === 0) {
+				cache = {};
+				finish();
+			}
 		};
-		for (const filepath in fileOperators) {
-			const fileOperator = fileOperators[filepath];
-			const next = callback;
-			callback = () => fileOperator.disconnect(accessKey, message, next, fileOperator.write());
-		}
-		callback();
+		let counter = 0;
+		for (const filepath in cache)
+			cache[filepath].write(counter++).destroy(message + " " + filepath, awaitCounter);
 	};
 };
-module.exports = SmallDataFile;
+module.exports = FileOperator;
