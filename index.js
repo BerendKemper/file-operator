@@ -23,7 +23,6 @@ class CachedFileOp {
 	};
 };
 let cache = {};
-// const overwrite =
 class FileOperator {
 	#hasRead = false;
 	#filepath;
@@ -55,7 +54,7 @@ class FileOperator {
 				data = data.toString();
 				if (data.length > 2) {
 					const source = this.$parse(data);
-					if (overwrite) {
+					if (overwrite === true) {
 						for (const prop in source)
 							this[prop] = source[prop];
 					}
@@ -86,11 +85,15 @@ class FileOperator {
 	/**
 	 * If closed returns true. When false something else is using it.
 	 */
-	$close() {
-		this.#queue.push(callback => {
-			if (--cache[this.#filepath].connections === 0)
-				return this.#queue.clear(delete (cache[this.#filepath]));
+	$close(callback) {
+		this.#queue.push(_callback => {
+			if (--cache[this.#filepath].connections === 0) {
+				delete (cache[this.#filepath]);
+				this.#queue.clear();
+				return callback();
+			}
 			callback();
+			_callback();
 		});
 		return this;
 	};
@@ -100,7 +103,10 @@ class FileOperator {
 	 * @param {*} callback 
 	 */
 	$onReady(callback) {
-		this.#queue.push(_callback => _callback(callback(this)));
+		this.#queue.push(_callback => {
+			callback(this);
+			_callback();
+		});
 		return this;
 	};
 	/**
