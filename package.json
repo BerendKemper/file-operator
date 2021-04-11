@@ -1,7 +1,7 @@
 {
 	"name": "file-operator",
 	"version": "1.0.0",
-	"description": "Configure a file operator ",
+	"description": "Read and write to files asynchronously",
 	"main": "index.js",
 	"repository": {
 		"type": "git",
