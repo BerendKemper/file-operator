@@ -1,11 +1,11 @@
 {
 	"name": "file-operator",
-	"version": "1.0.1",
+	"version": "1.0.0",
 	"description": "Configure a file operator ",
 	"main": "index.js",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/BerendKemper/fileObjectifier.git"
+		"url": "git+https://github.com/BerendKemper/file-operator.git"
 	},
 	"keywords": [],
 	"author": {
@@ -15,7 +15,7 @@
 	},
 	"license": "ISC",
 	"bugs": {
-		"url": "https://github.com/BerendKemper/fileObjectifier/issues"
+		"url": "https://github.com/BerendKemper/file-operator/issues"
 	},
-	"homepage": "https://github.com/BerendKemper/fileObjectifier#readme"
+	"homepage": "https://github.com/BerendKemper/file-operator#readme"
 }
