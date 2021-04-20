@@ -10,16 +10,14 @@ class CachedFileOp {
 		this.connections++;
 		return this.fileOperator;
 	};
-	write() {
+	saveAndDestroy(log, callback) {
 		this.fileOperator.$write();
-		return this;
-	};
-	destroy(log, callback) {
 		this.queue.push(() => {
 			this.queue.clear();
 			log("saved " + this.filepath);
 			callback();
 		});
+		return this;
 	};
 };
 let cache = {};
@@ -45,12 +43,13 @@ class FileOperator {
 	 * @param {*} overwrite 
 	 */
 	$read(overwrite) {
-		this.#queue.push(callback => {
+		this.#queue.push(next => {
 			if (this.#hasRead === true)
-				return callback();
+				return next();
 			fs.readFile(this.#filepath, (error, data) => {
 				if (error)
-					return callback(this.#hasRead = true);
+					// file does not exist and will be created on $write
+					return next(this.#hasRead = true);
 				data = data.toString();
 				if (data.length > 2) {
 					const source = this.$parse(data);
@@ -63,7 +62,7 @@ class FileOperator {
 							this[prop] = this[prop] || source[prop];
 				}
 				this.#hasRead = true;
-				callback();
+				next();
 			});
 		});
 		return this;
@@ -86,14 +85,14 @@ class FileOperator {
 	 * If closed returns true. When false something else is using it.
 	 */
 	$close(callback) {
-		this.#queue.push(_callback => {
+		this.#queue.push(next => {
 			if (--cache[this.#filepath].connections === 0) {
 				delete (cache[this.#filepath]);
 				this.#queue.clear();
 				return callback();
 			}
 			callback();
-			_callback();
+			next();
 		});
 		return this;
 	};
@@ -103,9 +102,9 @@ class FileOperator {
 	 * @param {*} callback 
 	 */
 	$onReady(callback) {
-		this.#queue.push(_callback => {
+		this.#queue.push(next => {
 			callback(this);
-			_callback();
+			next();
 		});
 		return this;
 	};
@@ -132,20 +131,20 @@ class FileOperator {
 	 * @param {Function} options.callback 
 	 */
 	static saveAndExitAll(options = {}) {
-		const { log = console.log, callback: finish = () => console.log("closed all fileOperators") } = options;
+		const { log = console.log, callback = () => console.log("closed all fileOperators") } = options;
 		if (typeof log !== "function")
 			throw new TypeError("logMessage is not a function");
-		if (typeof finish !== "function")
-			throw new TypeError("finish is not a function");
+		if (typeof callback !== "function")
+			throw new TypeError("callback is not a function");
 		const awaitCounter = () => {
 			if (--counter === 0) {
 				cache = {};
-				finish();
+				callback();
 			}
 		};
 		let counter = 0;
 		for (const filepath in cache)
-			cache[filepath].write(counter++).destroy(log, awaitCounter);
+			cache[filepath].saveAndDestroy(log, awaitCounter, counter++);
 	};
 	static get list() {
 		const list = [];
