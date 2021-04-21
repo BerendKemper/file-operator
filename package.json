@@ -17,5 +17,8 @@
 	"bugs": {
 		"url": "https://github.com/BerendKemper/file-operator/issues"
 	},
-	"homepage": "https://github.com/BerendKemper/file-operator#readme"
+	"homepage": "https://github.com/BerendKemper/file-operator#readme",
+	"dependencies": {
+		"ca11back-queue": "^0.x"
+	}
 }
