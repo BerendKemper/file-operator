@@ -1,6 +1,6 @@
 {
 	"name": "file-operator",
-	"version": "1.0.0",
+	"version": "1.0.2",
 	"description": "Read and write to files asynchronously",
 	"main": "index.js",
 	"repository": {
