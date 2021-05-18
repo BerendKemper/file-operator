@@ -24,24 +24,22 @@ function queueReadFile(next, overwrite) {
 	if (this.hasRead === true) return next();
 	let req = new FSReqCallback();
 	req.oncomplete = readAfterStats;
-	req.file = this;
-	req.next = next;
-	req.overwrite = overwrite;
+	req.context = {
+		file: this,
+		next,
+		overwrite
+	};
 	fstat(this.fd, false, req);
 };
 function readAfterStats(error, stats) {
 	if (error) throw error;
 	const size = (stats[1] & S_IFMT) === S_IFREG ? stats[8] : 0;
 	if (size === 0) {
-		this.file.hasRead = true;
-		return this.next();
+		this.context.file.hasRead = true;
+		return this.context.next();
 	}
-	this.file.readFile({
-		buffer: Buffer.allocUnsafe(size),
-		file: this.file,
-		next: this.next,
-		overwrite: this.overwrite
-	});
+	this.context.buffer = Buffer.allocUnsafe(size);
+	this.context.file.readFile(this.context);
 };
 function readFileAfterRead(error, bytesRead) {
 	if (error) throw error;
@@ -62,21 +60,20 @@ function writeFileAfterWritebuffer(error, bytesWritten) {
 	req.oncomplete = this.next;
 	ftruncate(this.fd, bytesWritten, req)
 };
-function queueCloseFile(next, { removePrivate, callback } = context) {
+function queueCloseFile(next, context) {
 	if (--this.connections === 0) {
 		const req = new FSReqCallback();
 		req.oncomplete = closeFileAfterCloseFd;
-		req.removePrivate = removePrivate;
-		req.file = this;
-		req.callback = callback;
+		req.context = context;
+		context.file = this;
 		return close(this.fd, req);
 	}
-	callback(false);
+	context.callback(false);
 	next();
 };
 function closeFileAfterCloseFd(error) {
 	if (error) throw error;
-	const { file, removePrivate, callback } = this;
+	const { file, removePrivate, callback } = this.context;
 	delete (openFiles[file.filepath]);
 	removePrivate.call(file.public);
 	file.queue.destroy();
@@ -202,13 +199,6 @@ class FileOperator {
 	get $filepath() {
 		return this.#private.filepath;
 	};
-	get highWaterMark() {
-		return highWaterMark;
-	};
-	// set highWaterMark(n) {
-	// 	if (Number.isInteger(n))
-	// 		this.#highWaterMark = computeNewHighWaterMark(n);
-	// };
 	/**
 	 * Writes and closes all existing FileOperator.
 	 * @param {Object} options
