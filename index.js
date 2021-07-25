@@ -8,167 +8,139 @@ const oRdwrCreat = function loadAppendCreat() {
 const { toNamespacedPath } = require("path");
 const QueueCallback = require("ca11back-queue");
 let openFiles = {};
-let removePrivate = null;
-function queueOpenFileFd(next, filepath) {
-    const req = new FSReqCallback();
-    req.oncomplete = openFileFdAfterOpen;
-    req.file = this;
-    req.next = next;
-    open(toNamespacedPath(filepath), oRdwrCreat, 0o666, req);
-};
-function openFileFdAfterOpen(error, fd) {
-    if (error) throw error;
-    this.file.fd = fd;
-    this.next();
-};
-function queueReadFile(next, overwrite) {
-    if (this.hasRead === true) return next();
-    let req = new FSReqCallback();
-    req.oncomplete = readAfterStats;
-    req.context = {
-        file: this,
-        next,
-        overwrite
-    };
-    fstat(this.fd, false, req);
-};
-function readAfterStats(error, stats) {
-    if (error) throw error;
-    const size = (stats[1] & S_IFMT) === S_IFREG ? stats[8] : 0;
-    if (size === 0) {
-        this.context.file.hasRead = true;
-        return this.context.next();
-    }
-    this.context.buffer = Buffer.allocUnsafe(size);
-    this.context.file.readFile(this.context);
-};
-function readFileAfterRead(error, bytesRead) {
-    if (error) throw error;
-    const context = this.context;
-    context.file.parseReadContent(context.buffer, context.overwrite, context.next)
-};
-function queueWriteFile(next, buffer) {
-    buffer = buffer ?? Buffer.from(this.public.$stringify(this.public));
-    const req = new FSReqCallback();
-    req.fd = this.fd;
-    req.next = next;
-    req.oncomplete = writeFileAfterWritebuffer;
-    writeBuffer(this.fd, buffer, 0, buffer.length, 0, req);
-};
-function writeFileAfterWritebuffer(error, bytesWritten) {
-    if (error) throw error;
-    const req = new FSReqCallback();
-    req.oncomplete = this.next;
-    ftruncate(this.fd, bytesWritten, req)
-};
-function queueCloseFile(next, callback) {
-    if (--this.connections === 0) {
-        const req = new FSReqCallback();
-        req.oncomplete = closeFileAfterCloseFd;
-        req.context = { file: this, callback };
-        return close(this.fd, req);
-    }
-    context.callback(false);
-    next();
-};
-function closeFileAfterCloseFd(error) {
-    if (error) throw error;
-    const { file, callback } = this.context;
-    delete (openFiles[file.filepath]);
-    removePrivate.call(file.public);
-    file.queue.destroy();
-    file.queue = null;
-    file.public = null;
-    callback(true);
-};
-function queueCallback(next, callback) {
-    callback(this.public)
-    next();
-};
-function queueSaveAndDestroy(next, { log, callback } = context) {
-    removePrivate.call(this.public);
-    this.queue.destroy();
-    this.public = null;
-    log("saved " + this.filepath);
-    callback();
-};
-class PrivateFileOperator {
-    connections = 1;
-    hasRead = false;
-    filepath = null;
-    queue = null;
-    fd = null;
-    constructor(_public, filepath) {
-        this.public = _public;
-        this.filepath = filepath;
-        this.queue = new QueueCallback(this);
-        this.queue.push(queueOpenFileFd, filepath);
-    };
-    readFile(context) {
-        const req = new FSReqCallback();
-        req.oncomplete = readFileAfterRead;
-        req.context = context;
-        read(this.fd, context.buffer, 0, context.buffer.length, 0, req);
-    };
-    parseReadContent(buffer, overwrite, next) {
-        const _public = this.public;
-        const source = _public.$parse(buffer.toString());
-        if (overwrite === true)
-            for (const prop in source)
-                _public[prop] = _public[prop] || source[prop];
-        else
-            for (const prop in source)
-                if (!_public[prop])
-                    _public[prop] = source[prop];
-        this.hasRead = true;
-        next();
-    };
-    saveAndDestroy(log, callback) {
-        this.public.$write(true);
-        this.queue.push(queueSaveAndDestroy, { log, callback });
-        return this;
-    };
-};
 /**@callback onClose @param {boolean} isClosed*/
 /**@callback onReady @param {FileOperator} self*/
 /**@callback logOnSaved @param {string} filepath*/
 class FileOperator {
-    #private;
-    #removePrivate() {
-        this.#private = null;
-    };
+    #connections = null;
+    #hasRead = null;
+    #filepath = null;
+    #queue = null;
+    #fd = null;
     /**Module for asynchronous reading and writing to a small configuration file.
      * @param {String} filepath*/
     constructor(filepath) {
-        if (openFiles[filepath]) {
-            openFiles[filepath].connections++;
-            return openFiles[filepath].public;
+        if (openFiles[filepath]) openFiles[filepath].#connections++;
+        else {
+            this.#hasRead = false;
+            this.#connections = 1;
+            this.#filepath = filepath;
+            openFiles[filepath] = this;
+            this.#queue = new QueueCallback(this);
+            this.#queue.push(this.#queueOpenFileFd, filepath);
         }
-        this.#private = openFiles[filepath] = new PrivateFileOperator(this, filepath);
-        if (removePrivate) removePrivate = this.#removePrivate;
+    };
+    #queueOpenFileFd(next, filepath) {
+        const req = new FSReqCallback();
+        req.oncomplete = this.#openFileFdAfterOpen;
+        req.file = this;
+        req.next = next;
+        open(toNamespacedPath(filepath), oRdwrCreat, 0o666, req);
+    };
+    #openFileFdAfterOpen(error, fd) {
+        if (error) throw error;
+        this.file.#fd = fd;
+        this.next();
     };
     /**Reads the file, parses the read content and then stores it in the fileOperator. If overwrite is true the content's properties overwrite the fileOperator's properties.
      * @param {boolean} overwrite*/
     $read(overwrite) {
-        this.#private.queue.push(queueReadFile, overwrite);
+        this.#queue.push(this.#queueReadFile, overwrite);
         return this;
+    };
+    #queueReadFile(next, overwrite) {
+        if (this.#hasRead === true) return next();
+        let req = new FSReqCallback();
+        req.oncomplete = this.#readAfterStats;
+        req.context = {
+            file: this,
+            next,
+            overwrite
+        };
+        fstat(this.#fd, false, req);
+    };
+    #readAfterStats(error, stats) {
+        if (error) throw error;
+        const size = (stats[1] & S_IFMT) === S_IFREG ? stats[8] : 0;
+        if (size === 0) {
+            this.context.file.#hasRead = true;
+            return this.context.next();
+        }
+        this.context.buffer = Buffer.allocUnsafe(size);
+        this.context.file.#readFile(this.context);
+    };
+    #readFile(context) {
+        const req = new FSReqCallback();
+        req.oncomplete = this.#parseReadContent;
+        req.context = context;
+        read(this.#fd, context.buffer, 0, context.buffer.length, 0, req);
+    };
+    #parseReadContent(error, bytesRead) {
+        if (error) throw error;
+        const { file, buffer, overwrite, next } = this.context;
+        const source = file.$parse(buffer.toString());
+        if (overwrite === true)
+            for (const prop in source)
+                file[prop] = file[prop] || source[prop];
+        else
+            for (const prop in source)
+                if (!file[prop])
+                    file[prop] = source[prop];
+        file.#hasRead = true;
+        next();
     };
     /**Stringifies the data and overwrites the file with the new string. If wait is true, data is not stringifying immediately but when it's write's turn in the queue.
      * @param {boolean} wait*/
     $write(wait) {
-        this.#private.queue.push(queueWriteFile, wait === true ? null : Buffer.from(this.$stringify(this)));
+        this.#queue.push(this.#queueWriteFile, wait === true ? null : Buffer.from(this.$stringify(this)));
         return this;
+    };
+    #queueWriteFile(next, buffer) {
+        buffer = buffer ?? Buffer.from(this.$stringify(this));
+        const req = new FSReqCallback();
+        req.fd = this.#fd;
+        req.next = next;
+        req.oncomplete = this.#writeFileAfterWritebuffer;
+        writeBuffer(this.#fd, buffer, 0, buffer.length, 0, req);
+    };
+    #writeFileAfterWritebuffer(error, bytesWritten) {
+        if (error) throw error;
+        const req = new FSReqCallback();
+        req.oncomplete = this.next;
+        ftruncate(this.fd, bytesWritten, req)
     };
     /**Passes over false to callback if another fileOperator is connected.
      * @param {onClose} callback*/
     $close(callback) {
-        this.#private.queue.push(queueCloseFile, callback);
+        this.#queue.push(this.#queueCloseFile, callback);
+    };
+    #queueCloseFile(next, callback) {
+        if (--this.#connections === 0) {
+            const req = new FSReqCallback();
+            req.oncomplete = this.#closeFileAfterCloseFd;
+            req.context = { file: this, callback };
+            return close(this.#fd, req);
+        }
+        callback(false);
+        next();
+    };
+    #closeFileAfterCloseFd(error) {
+        if (error) throw error;
+        const { file, callback } = this.context;
+        delete (openFiles[file.#filepath]);
+        file.#queue.destroy();
+        file.#queue = null;
+        callback(true);
     };
     /**This method pushes the callback onto the queue. This callback is invoked only when all method calls prior to this callback have finished.
      * @param {onReady} callback*/
     $onReady(callback) {
-        this.#private.queue.push(queueCallback, callback);
+        this.#queue.push(this.#queueCallback, callback);
         return this;
+    };
+    #queueCallback(next, callback) {
+        callback(this)
+        next();
     };
     /**When reading file content this method is invoked to parse the content. Default: return JSON.parse(data)
      * @param {srting} data @returns {*} parsed object*/
@@ -181,7 +153,7 @@ class FileOperator {
         return JSON.stringify(data);
     };
     get $filepath() {
-        return this.#private.filepath;
+        return this.#filepath;
     };
     /**Writes and closes all existing FileOperator
      * @param {{log:logOnSaved callback:function}} options*/
@@ -201,14 +173,20 @@ class FileOperator {
         for (const filepath in openFiles) {
             counter++;
             const file = openFiles[filepath];
-            file.saveAndDestroy(log, awaitCounter);
+            file.$write(true);
+            file.#queue.push(this.#queueSaveAndDestroy, { log, callback: awaitCounter });
         }
     };
-    /**Shows a list of all fileOperators in memory.*/
+    #queueSaveAndDestroy(next, { log, callback } = context) {
+        this.#queue.destroy();
+        log("saved " + this.#filepath);
+        callback();
+    };
+    /**@returns {FileOperator[]}*/
     static get list() {
         const list = [];
         for (const filepath in openFiles)
-            list.push(openFiles[filepath].public);
+            list.push(openFiles[filepath]);
         return list;
     };
 };
