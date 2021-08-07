@@ -6,7 +6,7 @@ const oRdwrCreat = function loadAppendCreat() {
     return O_RDWR | O_CREAT;
 }();
 const { toNamespacedPath } = require("path");
-const QueueCallback = require("ca11back-queue");
+const CallbackQueue = require("ca11back-queue");
 let openFiles = {};
 /**@callback onClose @param {boolean} isClosed*/
 /**@callback onReady @param {FileOperator} self*/
@@ -26,7 +26,7 @@ class FileOperator {
             this.#connections = 1;
             this.#filepath = filepath;
             openFiles[filepath] = this;
-            this.#queue = new QueueCallback(this);
+            this.#queue = new CallbackQueue(this);
             this.#queue.push(this.#queueOpenFileFd, filepath);
         }
     };
@@ -174,7 +174,7 @@ class FileOperator {
             counter++;
             const file = openFiles[filepath];
             file.$write(true);
-            file.#queue.push(this.#queueSaveAndDestroy, { log, callback: awaitCounter });
+            file.#queue.push(file.#queueSaveAndDestroy, { log, callback: awaitCounter });
         }
     };
     #queueSaveAndDestroy(next, { log, callback } = context) {
