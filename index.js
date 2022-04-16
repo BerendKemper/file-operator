@@ -67,18 +67,17 @@ class FileOperator {
         if (error)
             throw error;
         const size = (stats[1] & S_IFMT) === S_IFREG ? stats[8] : 0;
+        const { context } = this;
+        const { file } = context;
         if (size === 0) {
-            this.context.file.#hasRead = true;
-            return this.context.next();
+            file.#hasRead = true;
+            return context.next();
         }
-        this.context.buffer = Buffer.allocUnsafe(size);
-        this.context.file.#readFile(this.context);
-    }
-    #readFile(context) {
+        const buffer = context.buffer = Buffer.allocUnsafe(size);
         const req = new FSReqCallback();
-        req.oncomplete = this.#parseReadContent;
+        req.oncomplete = file.#parseReadContent;
         req.context = context;
-        read(this.#fd, context.buffer, 0, context.buffer.length, 0, req);
+        read(file.#fd, buffer, 0, buffer.length, 0, req);
     }
     #parseReadContent(error, bytesRead) {
         if (error)
