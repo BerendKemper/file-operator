@@ -1,19 +1,19 @@
 "use strict";
-const { close, open, read, writeBuffer, fstat, ftruncate, FSReqCallback } = process.binding('fs');
+const { mkdir, open, fstat, read, writeBuffer, close, ftruncate, FSReqCallback } = process.binding('fs');
 const { S_IFMT, S_IFREG } = require("fs").constants;
 const oRdwrCreat = function loadAppendCreat() {
     const { O_RDWR, O_CREAT } = require("fs").constants;
     return O_RDWR | O_CREAT;
 }();
-const { toNamespacedPath } = require("path");
+const path = require("path");
 const CallbackQueue = require("ca11back-queue");
 let openFiles = {};
 /**@callback onClose @param {boolean} isClosed*/
 /**@callback onReady @param {FileOperator} self*/
 /**@callback logOnSaved @param {string} filepath*/
 class FileOperator {
-    #connections = null;
-    #hasRead = null;
+    #connections = 1;
+    #hasRead = false;
     #filepath = null;
     #queue = null;
     #fd = null;
@@ -23,27 +23,33 @@ class FileOperator {
         if (openFiles[filepath])
             openFiles[filepath].#connections++;
         else {
-            this.#hasRead = false;
-            this.#connections = 1;
             this.#filepath = filepath;
             openFiles[filepath] = this;
             this.#queue = new CallbackQueue(this);
-            this.#queue.push(this.#queueOpenFileFd, filepath);
+            this.#queue.push(this.#queueOpenFile, filepath);
         }
         return openFiles[filepath];
     }
-    #queueOpenFileFd(next, filepath) {
+    #queueOpenFile(next, filepath) {
         const req = new FSReqCallback();
-        req.oncomplete = this.#openFileFdAfterOpen;
-        req.file = this;
-        req.next = next;
-        open(toNamespacedPath(filepath), oRdwrCreat, 0o666, req);
+        req.oncomplete = this.#queueOpenFileAfterMkdir;
+        req.context = { filepath, next, file: this };
+        mkdir(path.dirname(filepath), 0o777, true, req);
+    }
+    #queueOpenFileAfterMkdir(error) {
+        if (error)
+            throw error;
+        const { context } = this;
+        const req = new FSReqCallback();
+        req.oncomplete = context.file.#openFileFdAfterOpen;
+        req.context = context;
+        open(path.toNamespacedPath(context.filepath), oRdwrCreat, 0o666, req);
     }
     #openFileFdAfterOpen(error, fd) {
         if (error)
             throw error;
-        this.file.#fd = fd;
-        this.next();
+        this.context.file.#fd = fd;
+        this.context.next();
     }
     /**Reads the file, parses the read content and then stores it in the fileOperator. If overwrite is true the content's properties overwrite the fileOperator's properties.
      * @param {boolean} overwrite*/
@@ -89,7 +95,7 @@ class FileOperator {
                 file[prop] = file[prop] || source[prop];
         else
             for (const prop in source)
-                if (!file[prop])
+                if (!file.hasOwnProperty(prop))
                     file[prop] = source[prop];
         file.#hasRead = true;
         next();
@@ -141,12 +147,12 @@ class FileOperator {
     }
     /**This method pushes the callback onto the queue. This callback is invoked only when all method calls prior to this callback have finished.
      * @param {onReady} callback*/
-    $onReady(callback) {
-        this.#queue.push(this.#queueCallback, callback);
+    $onReady(callback, ...args) {
+        this.#queue.push(this.#queueCallback, callback, ...args);
         return this;
     }
-    #queueCallback(next, callback) {
-        callback(this)
+    #queueCallback(next, callback, ...args) {
+        callback(this, ...args);
         next();
     }
     /**When reading file content this method is invoked to parse the content. Default: return JSON.parse(data)
@@ -161,6 +167,9 @@ class FileOperator {
     }
     get $filepath() {
         return this.#filepath;
+    }
+    get connections() {
+        return this.#connections;
     }
     /**Writes and closes all existing FileOperator
      * @param {{log:logOnSaved callback:function}} options*/
