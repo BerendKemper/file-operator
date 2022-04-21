@@ -34,7 +34,7 @@ class FileOperator {
         const req = new FSReqCallback();
         req.oncomplete = this.#queueOpenFileAfterMkdir;
         req.context = { filepath, next, file: this };
-        mkdir(path.dirname(filepath), 0o777, true, req);
+        mkdir(path.toNamespacedPath(path.dirname(filepath)), 0o777, true, req);
     }
     #queueOpenFileAfterMkdir(error) {
         if (error)
@@ -168,7 +168,7 @@ class FileOperator {
     get $filepath() {
         return this.#filepath;
     }
-    get connections() {
+    get $connections() {
         return this.#connections;
     }
     /**Writes and closes all existing FileOperator
