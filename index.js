@@ -30,10 +30,10 @@ class FileOperator {
         }
         return openFiles[filepath];
     }
-    #queueOpenFile(next, filepath) {
+    #queueOpenFile(file, next, filepath) {
         const req = new FSReqCallback();
-        req.oncomplete = this.#queueOpenFileAfterMkdir;
-        req.context = { filepath, next, file: this };
+        req.oncomplete = file.#queueOpenFileAfterMkdir;
+        req.context = { filepath, next, file };
         mkdir(path.toNamespacedPath(path.dirname(filepath)), 0o777, true, req);
     }
     #queueOpenFileAfterMkdir(error) {
@@ -57,17 +57,13 @@ class FileOperator {
         this.#queue.push(this.#queueReadFile, overwrite);
         return this;
     }
-    #queueReadFile(next, overwrite) {
-        if (this.#hasRead === true)
+    #queueReadFile(file, next, overwrite) {
+        if (file.#hasRead === true)
             return next();
         let req = new FSReqCallback();
-        req.oncomplete = this.#readAfterStats;
-        req.context = {
-            file: this,
-            next,
-            overwrite
-        };
-        fstat(this.#fd, false, req);
+        req.oncomplete = file.#readAfterStats;
+        req.context = { file, next, overwrite };
+        fstat(file.#fd, false, req);
     }
     #readAfterStats(error, stats) {
         if (error)
@@ -106,13 +102,13 @@ class FileOperator {
         this.#queue.push(this.#queueWriteFile, wait === true ? null : Buffer.from(this.$stringify(this)));
         return this;
     }
-    #queueWriteFile(next, buffer) {
-        buffer = buffer ?? Buffer.from(this.$stringify(this));
+    #queueWriteFile(file, next, buffer) {
+        buffer = buffer ?? Buffer.from(file.$stringify(file));
         const req = new FSReqCallback();
-        req.fd = this.#fd;
+        req.fd = file.#fd;
         req.next = next;
-        req.oncomplete = this.#writeFileAfterWritebuffer;
-        writeBuffer(this.#fd, buffer, 0, buffer.length, 0, req);
+        req.oncomplete = file.#writeFileAfterWritebuffer;
+        writeBuffer(file.#fd, buffer, 0, buffer.length, 0, req);
     }
     #writeFileAfterWritebuffer(error, bytesWritten) {
         if (error)
@@ -126,12 +122,12 @@ class FileOperator {
     $close(callback) {
         this.#queue.push(this.#queueCloseFile, callback);
     }
-    #queueCloseFile(next, callback) {
-        if (--this.#connections === 0) {
+    #queueCloseFile(file, next, callback) {
+        if (--file.#connections === 0) {
             const req = new FSReqCallback();
-            req.oncomplete = this.#closeFileAfterCloseFd;
-            req.context = { file: this, callback };
-            return close(this.#fd, req);
+            req.oncomplete = file.#closeFileAfterCloseFd;
+            req.context = { file, callback };
+            return close(file.#fd, req);
         }
         callback(false);
         next();
@@ -151,8 +147,8 @@ class FileOperator {
         this.#queue.push(this.#queueCallback, callback, ...args);
         return this;
     }
-    #queueCallback(next, callback, ...args) {
-        callback(this, ...args);
+    #queueCallback(file, next, callback, ...args) {
+        callback(file, ...args);
         next();
     }
     /**When reading file content this method is invoked to parse the content. Default: return JSON.parse(data)
@@ -190,12 +186,12 @@ class FileOperator {
             counter++;
             const file = openFiles[filepath];
             file.$write(true);
-            file.#queue.push(file.#queueSaveAndDestroy, { log, callback: awaitCounter });
+            file.#queue.push(file.#queueSaveAndDestroy, awaitCounter, log);
         }
     }
-    #queueSaveAndDestroy(next, { log, callback } = context) {
-        this.#queue.destroy();
-        log("saved " + this.#filepath);
+    #queueSaveAndDestroy(file, next, log, callback) {
+        file.#queue.destroy();
+        log("saved " + file.#filepath);
         callback();
     }
     /**@returns {FileOperator[]}*/
