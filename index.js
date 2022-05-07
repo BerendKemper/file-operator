@@ -8,9 +8,6 @@ const oRdwrCreat = function loadAppendCreat() {
 const path = require("path");
 const CallbackQueue = require("ca11back-queue");
 let openFiles = {};
-/**@callback onClose @param {boolean} isClosed*/
-/**@callback onReady @param {FileOperator} self*/
-/**@callback logOnSaved @param {string} filepath*/
 class FileOperator {
     #connections = 1;
     #hasRead = false;
@@ -88,7 +85,7 @@ class FileOperator {
         const source = file.$parse(buffer.toString());
         if (overwrite === true)
             for (const prop in source)
-                file[prop] = file[prop] || source[prop];
+                file[prop] = source[prop];
         else
             for (const prop in source)
                 if (!file.hasOwnProperty(prop))
@@ -129,7 +126,7 @@ class FileOperator {
             req.context = { file, callback };
             return close(file.#fd, req);
         }
-        callback(false);
+        callback(null);
         next();
     }
     #closeFileAfterCloseFd(error) {
@@ -139,7 +136,7 @@ class FileOperator {
         openFiles[file.#filepath] = null;
         file.#queue.destroy();
         file.#queue = null;
-        callback(true);
+        callback(file.#filepath);
     }
     /**This method pushes the callback onto the queue. This callback is invoked only when all method calls prior to this callback have finished.
      * @param {onReady} callback*/
@@ -170,12 +167,13 @@ class FileOperator {
     /**Writes and closes all existing FileOperator
      * @param {{log:logOnSaved callback:function}} options*/
     static saveAndExitAll(options = {}) {
-        const { log = console.log, callback = () => console.log("closed all fileOperators") } = options;
+        const { log, callback } = options;
         if (typeof log !== "function")
-            throw new TypeError("logMessage is not a function");
+            log = console.log;
         if (typeof callback !== "function")
-            throw new TypeError("callback is not a function");
-        const awaitCounter = () => {
+            callback = () => console.log("closed all fileOperators")
+        const awaitCounter = (filepath) => {
+            log("saved " + filepath);
             if (--counter === 0) {
                 openFiles = {};
                 process.nextTick(callback);
@@ -186,20 +184,21 @@ class FileOperator {
             counter++;
             const file = openFiles[filepath];
             file.$write(true);
-            file.#queue.push(file.#queueSaveAndDestroy, awaitCounter, log);
+            file.#queue.push(file.#queueSaveAndDestroy, awaitCounter);
         }
     }
-    #queueSaveAndDestroy(file, next, log, callback) {
-        file.#queue.destroy();
-        log("saved " + file.#filepath);
-        callback();
+    #queueSaveAndDestroy(file, next, callback) {
+        const req = new FSReqCallback();
+        req.oncomplete = file.#closeFileAfterCloseFd;
+        req.context = { file, callback };
+        return close(file.#fd, req);
     }
     /**@returns {FileOperator[]}*/
     static get list() {
-        const list = [];
-        for (const filepath in openFiles)
-            list.push(openFiles[filepath]);
-        return list;
+        return Object.values(openFiles);
     }
 }
 module.exports = FileOperator;
+/**@callback onClose @param {string|null} filepath*/
+/**@callback onReady @param {FileOperator} self*/
+/**@callback logOnSaved @param {string} filepath*/
