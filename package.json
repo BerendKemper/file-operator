@@ -1,6 +1,6 @@
 {
     "name": "file-operator",
-    "version": "1.1.8",
+    "version": "1.1.9",
     "description": "Read and write to files asynchronously",
     "main": "index.js",
     "repository": {
@@ -19,6 +19,6 @@
     },
     "homepage": "https://github.com/BerendKemper/file-operator#readme",
     "dependencies": {
-        "ca11back-queue": "^2.0.0"
+        "ca11back-queue": "^3.0.0"
     }
 }
