@@ -126,7 +126,8 @@ class FileOperator {
             req.context = { file, callback };
             return close(file.#fd, req);
         }
-        callback(null);
+        if (typeof callback === "function")
+            callback(null);
         next();
     }
     #closeFileAfterCloseFd(error) {
@@ -136,7 +137,8 @@ class FileOperator {
         openFiles[file.#filepath] = null;
         file.#queue.destroy();
         file.#queue = null;
-        callback(file.#filepath);
+        if (typeof callback === "function")
+            callback(file.#filepath);
     }
     /**This method pushes the callback onto the queue. This callback is invoked only when all method calls prior to this callback have finished.
      * @param {onReady} callback*/
