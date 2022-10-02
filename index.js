@@ -14,8 +14,6 @@ class FileOperator {
     #filepath = null;
     #queue = null;
     #fd = null;
-    /**Module for asynchronous reading and writing to a small configuration file.
-     * @param {String} filepath*/
     constructor(filepath) {
         if (openFiles[filepath])
             openFiles[filepath].#connections++;
@@ -48,8 +46,6 @@ class FileOperator {
         this.context.file.#fd = fd;
         this.context.next();
     }
-    /**Reads the file, parses the read content and then stores it in the fileOperator. If overwrite is true the content's properties overwrite the fileOperator's properties.
-     * @param {boolean} overwrite*/
     $read(overwrite) {
         this.#queue.push(this.#queueReadFile, overwrite);
         return this;
@@ -93,8 +89,6 @@ class FileOperator {
         file.#hasRead = true;
         next();
     }
-    /**Stringifies the data and overwrites the file with the new string. If wait is true, data is not stringifying immediately but when it's write's turn in the queue.
-     * @param {boolean} wait*/
     $write(wait) {
         this.#queue.push(this.#queueWriteFile, wait === true ? null : Buffer.from(this.$stringify(this)));
         return this;
@@ -114,8 +108,6 @@ class FileOperator {
         req.oncomplete = this.next;
         ftruncate(this.fd, bytesWritten, req)
     }
-    /**Passes over false to callback if another fileOperator is connected.
-     * @param {onClose} callback*/
     $close(callback) {
         this.#queue.push(this.#queueCloseFile, callback);
     }
@@ -140,8 +132,6 @@ class FileOperator {
         if (typeof callback === "function")
             callback(file.#filepath);
     }
-    /**This method pushes the callback onto the queue. This callback is invoked only when all method calls prior to this callback have finished.
-     * @param {onReady} callback*/
     $onReady(callback, ...args) {
         this.#queue.push(this.#queueCallback, callback, ...args);
         return this;
@@ -150,13 +140,9 @@ class FileOperator {
         callback(file, ...args);
         next();
     }
-    /**When reading file content this method is invoked to parse the content. Default: return JSON.parse(data)
-     * @param {srting} data @returns {*} parsed object*/
     $parse(data) {
         return JSON.parse(data);
     }
-    /**When writing to the file this method is invoked to stringify the data. Default: return JSON.stringify(data)
-     * @param {object} data @returns {string} stringified content of the data property*/
     $stringify(data) {
         return JSON.stringify(data);
     }
@@ -166,8 +152,6 @@ class FileOperator {
     get $connections() {
         return this.#connections;
     }
-    /**Writes and closes all existing FileOperator
-     * @param {{log:logOnSaved callback:function}} options*/
     static saveAndExitAll(options = {}) {
         const { log, callback } = options;
         if (typeof log !== "function")
@@ -195,12 +179,8 @@ class FileOperator {
         req.context = { file, callback };
         return close(file.#fd, req);
     }
-    /**@returns {FileOperator[]}*/
     static get list() {
         return Object.values(openFiles);
     }
 }
 module.exports = FileOperator;
-/**@callback onClose @param {string|null} filepath*/
-/**@callback onReady @param {FileOperator} self*/
-/**@callback logOnSaved @param {string} filepath*/
